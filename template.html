@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@800;900&family=Inter:wght@400;600;800;900&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { width: 1080px; height: 1080px; background: #f4efe6; color: #151515; font-family: 'Inter', sans-serif; position: relative; overflow: hidden; }
+
+  /* Üst renkli kapak bloğu */
+  .cover { position: absolute; left: 0; top: 0; width: 1080px; height: 400px; background: {{ACCENT}}; color: #fff; overflow: hidden; }
+  .cover::before { content: ""; position: absolute; inset: 0;
+    background: repeating-linear-gradient(135deg, rgba(255,255,255,.07) 0 2px, transparent 2px 26px); }
+  .masthead { position: absolute; left: 60px; right: 70px; top: 34px; display: flex; justify-content: space-between; align-items: center; z-index: 2; }
+  .brand { display: flex; align-items: center; gap: 20px; }
+  .brand img { width: 124px; height: 124px; display: block; }
+  .logo { font-family: 'Playfair Display', serif; font-weight: 900; font-size: 64px; letter-spacing: 8px; line-height: 1; }
+  .date { font-size: 22px; font-weight: 600; letter-spacing: 3px; text-transform: uppercase; border: 2px solid rgba(255,255,255,.85); padding: 8px 16px; }
+  .cat { position: absolute; left: 62px; bottom: 6px; font-weight: 900; font-size: 210px; line-height: .86; letter-spacing: -6px; white-space: nowrap; color: #fff; z-index: 2; }
+
+  /* Alt içerik */
+  .content { position: absolute; left: 70px; right: 70px; top: 440px; bottom: 112px; overflow: hidden; }
+  h1 { font-family: 'Playfair Display', serif; font-weight: 900; font-size: 80px; line-height: 1.08; letter-spacing: -1px; }
+  .rule { width: 110px; height: 8px; background: {{ACCENT}}; margin: 28px 0 24px; }
+  p { font-size: 34px; line-height: 1.42; font-weight: 400; color: #2a2a2a; }
+
+  .footer { position: absolute; left: 70px; right: 70px; bottom: 48px; display: flex; justify-content: space-between; align-items: center; border-top: 3px solid #151515; padding-top: 18px; font-size: 22px; font-weight: 600; color: #333; }
+  .footer .follow { background: #151515; color: #f4efe6; padding: 8px 18px; font-weight: 800; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+  <div class="cover">
+    <div class="masthead">
+      <div class="brand"><img src="{{LOGO}}" alt=""></div>
+      <div class="date">{{TARIH}}</div>
+    </div>
+    <div class="cat" id="cat">{{KATEGORI}}</div>
+  </div>
+  <div class="content" id="content">
+    <h1 id="h1">{{BASLIK}}</h1>
+    <div class="rule"></div>
+    <p id="ozet">{{OZET}}</p>
+  </div>
+  <div class="footer"><span>Kaynak: {{KAYNAK}}</span><span class="follow">TAKİPTE KAL</span></div>
+
+<script>
+  // Kategori kelimesini ve başlığı alana sığacak şekilde otomatik küçült
+  function fit() {
+    var cat = document.getElementById('cat');
+    var size = 210;
+    while (cat.scrollWidth > 960 && size > 60) { size -= 4; cat.style.fontSize = size + 'px'; }
+
+    var content = document.getElementById('content');
+    var h1 = document.getElementById('h1');
+    var p = document.getElementById('ozet');
+    var hs = 80, ps = 34;
+    while (content.scrollHeight > content.clientHeight && hs > 46) {
+      hs -= 2; ps = Math.max(26, ps - 0.5);
+      h1.style.fontSize = hs + 'px'; p.style.fontSize = ps + 'px';
+    }
+  }
+  (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(fit);
+</script>
+</body>
+</html>
