@@ -6,6 +6,7 @@ import json
 import os
 import random
 import re
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -54,13 +55,13 @@ def load_posted():
     return []
 
 
-def collect(posted):
+def collect(posted, per_feed=6, limit=30):
     items = []
     for url in FEEDS:
         try:
             feed = feedparser.parse(url)
             source = feed.feed.get("title", url)
-            for e in feed.entries[:6]:
+            for e in feed.entries[:per_feed]:
                 link = e.get("link")
                 if not link or link in posted:
                     continue
@@ -73,7 +74,7 @@ def collect(posted):
         except Exception as ex:  # noqa: BLE001
             print(f"Besleme okunamadı: {url} ({ex})")
     random.shuffle(items)
-    return items[:30]
+    return items[:limit]
 
 
 PROMPT = """Sen "Deep" adlı Türkçe bir Instagram dergi sayfasının editörüsün.
@@ -85,7 +86,7 @@ KURALLAR:
 - SADECE aday metinlerde yazan bilgileri kullan. Bilgi uydurma, tahmin ekleme.
 - Kendi cümlelerinle yaz, haber metnini kopyalama.
 - Dil sade, akıcı ve dergi tadında olsun.
-
+{notlar}
 Sadece şu JSON'u döndür:
 {{
   "index": seçilen adayın numarası (tam sayı),
@@ -100,12 +101,12 @@ ADAYLAR:
 """
 
 
-def ask_gemini(items):
+def ask_gemini(items, notlar=""):
     adaylar = "\n".join(
         f"[{i}] ({it['source']}) {it['title']} — {it['summary']}" for i, it in enumerate(items)
     )
     body = {
-        "contents": [{"parts": [{"text": PROMPT.format(adaylar=adaylar)}]}],
+        "contents": [{"parts": [{"text": PROMPT.format(adaylar=adaylar, notlar=notlar)}]}],
         # Gemini 3.x için temperature önerilmiyor, varsayılan bırakıldı
         "generationConfig": {"responseMimeType": "application/json"},
     }
@@ -179,6 +180,53 @@ def cleanup_images(keep=30):
         f.unlink()
 
 
+def batch(count):
+    """İstenen sayıda post üretip batch_out/ klasörüne koyar (indirmek için)."""
+    if not API_KEY:
+        sys.exit("GEMINI_API_KEY tanımlı değil.")
+    count = max(1, min(count, 20))
+    out_dir = ROOT / "batch_out"
+    shutil.rmtree(out_dir, ignore_errors=True)
+    out_dir.mkdir()
+
+    posted = load_posted()
+    items = collect(posted, per_feed=12, limit=80)
+    if not items:
+        sys.exit("Yeni haber bulunamadı.")
+
+    captions, links, cats = [], [], []
+    n = 0
+    while n < count and items:
+        notlar = ""
+        if cats:
+            notlar = ("- Bu pakette daha önce seçilen kategoriler: " + ", ".join(cats)
+                      + ". Mümkünse farklı bir kategoriden seç, çeşitlilik olsun.\n")
+        try:
+            data = ask_gemini(items[:40], notlar)
+        except Exception as ex:  # noqa: BLE001
+            print(f"Gemini yanıt vermedi, duruluyor: {ex}")
+            break
+        chosen = items.pop(int(data["index"]))
+        data["kaynak"] = chosen["source"]
+        n += 1
+        render(data, out_dir / f"post-{n:02d}.jpg")
+        caption = f"{data['caption'].strip()}\n\nKaynak: {chosen['source']}"
+        (out_dir / f"post-{n:02d}.txt").write_text(caption, encoding="utf-8")
+        captions.append(f"===== POST {n:02d} =====\n{caption}\n")
+        links.append(f"POST {n:02d}: {chosen['title']}\n{chosen['link']}\n")
+        cats.append(str(data["kategori"]).upper())
+        posted.append(chosen["link"])
+        print(f"Post {n}/{count} hazır: {data['baslik']}")
+        time.sleep(6)  # ücretsiz kota için kısa bekleme
+
+    if n == 0:
+        sys.exit("Hiç post üretilemedi.")
+    (out_dir / "tum-aciklamalar.txt").write_text("\n".join(captions), encoding="utf-8")
+    (out_dir / "kaynak-linkleri.txt").write_text("\n".join(links), encoding="utf-8")
+    POSTED.write_text(json.dumps(posted[-300:], ensure_ascii=False, indent=2), encoding="utf-8")
+    print(f"Toplam {n} post hazır.")
+
+
 def main():
     if not API_KEY:
         sys.exit("GEMINI_API_KEY tanımlı değil.")
@@ -214,4 +262,7 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) >= 3 and sys.argv[1] == "--batch":
+        batch(int(sys.argv[2]))
+    else:
+        main()
