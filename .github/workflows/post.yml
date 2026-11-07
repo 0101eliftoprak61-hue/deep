@@ -1,0 +1,48 @@
+name: Deep post
+
+on:
+  schedule:
+    # UTC saatleriyle: Türkiye saatiyle 09:00, 12:00, 15:00, 18:00, 21:00
+    - cron: "0 6,9,12,15,18 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deep-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      IG_USER_ID: ${{ secrets.IG_USER_ID }}
+      IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Bağımlılıkları kur
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Post üret
+        run: python main.py
+
+      - name: Görseli repoya kaydet
+        run: |
+          git config user.name "deep-bot"
+          git config user.email "deep-bot@users.noreply.github.com"
+          git add -A images posted.json latest.json
+          git commit -m "yeni post" || echo "Değişiklik yok"
+          git push || echo "Push yapılamadı"
+
+      - name: Instagram'a yayınla
+        run: python publish.py
