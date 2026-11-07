@@ -19,7 +19,9 @@ POSTED = ROOT / "posted.json"
 LATEST = ROOT / "latest.json"
 TEMPLATE = ROOT / "template.html"
 
-MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+# Ana model çalışmazsa (kota, erişim vb.) sırayla bunlar denenir
+FALLBACK_MODELS = ["gemini-3-flash-preview", "gemini-2.5-flash"]
 API_KEY = os.environ.get("GEMINI_API_KEY", "")
 
 # Çalışmayan bir besleme olursa atlanır, sistem durmaz. İstediğini ekleyip çıkarabilirsin.
@@ -102,29 +104,36 @@ def ask_gemini(items):
     adaylar = "\n".join(
         f"[{i}] ({it['source']}) {it['title']} — {it['summary']}" for i, it in enumerate(items)
     )
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
     body = {
         "contents": [{"parts": [{"text": PROMPT.format(adaylar=adaylar)}]}],
-        "generationConfig": {"responseMimeType": "application/json", "temperature": 0.7},
+        # Gemini 3.x için temperature önerilmiyor, varsayılan bırakıldı
+        "generationConfig": {"responseMimeType": "application/json"},
     }
+    models = [MODEL] + [m for m in FALLBACK_MODELS if m != MODEL]
     last = None
-    for attempt in range(3):
-        try:
-            r = requests.post(url, params={"key": API_KEY}, json=body, timeout=90)
-            r.raise_for_status()
-            text = r.json()["candidates"][0]["content"]["parts"][0]["text"]
-            data = json.loads(text)
-            if isinstance(data, list):
-                data = data[0]
-            for k in ("index", "kategori", "baslik", "ozet", "caption"):
-                assert k in data, f"eksik alan: {k}"
-            assert 0 <= int(data["index"]) < len(items)
-            return data
-        except Exception as ex:  # noqa: BLE001
-            last = ex
-            print(f"Gemini denemesi {attempt + 1} başarısız: {ex}")
-            time.sleep(5 * (attempt + 1))
-    raise RuntimeError(f"Gemini yanıt vermedi: {last}")
+    for model in models:
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        for attempt in range(2):
+            try:
+                r = requests.post(url, params={"key": API_KEY}, json=body, timeout=120)
+                if not r.ok:
+                    raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
+                parts = r.json()["candidates"][0]["content"]["parts"]
+                text = "".join(p.get("text", "") for p in parts if not p.get("thought"))
+                text = re.sub(r"^```(?:json)?|```$", "", text.strip(), flags=re.M).strip()
+                data = json.loads(text)
+                if isinstance(data, list):
+                    data = data[0]
+                for k in ("index", "kategori", "baslik", "ozet", "caption"):
+                    assert k in data, f"eksik alan: {k}"
+                assert 0 <= int(data["index"]) < len(items)
+                print(f"Kullanılan model: {model}")
+                return data
+            except Exception as ex:  # noqa: BLE001
+                last = ex
+                print(f"{model} deneme {attempt + 1} başarısız: {ex}")
+                time.sleep(4)
+    raise RuntimeError(f"Hiçbir Gemini modeli yanıt vermedi: {last}")
 
 
 def render(data, out_path):
@@ -137,8 +146,12 @@ def render(data, out_path):
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=3)
     tarih = f"{now.day} {months[now.month - 1]} {now.year}"
 
-    logo_b64 = base64.b64encode((ROOT / "logo_white.png").read_bytes()).decode()
-    logo_uri = f"data:image/png;base64,{logo_b64}"
+    logo_path = ROOT / "logo_white.png"
+    if logo_path.exists():
+        logo_b64 = base64.b64encode(logo_path.read_bytes()).decode()
+        logo_uri = f"data:image/png;base64,{logo_b64}"
+    else:
+        logo_uri = ""  # logo yüklenmediyse sol üst boş kalır, sistem çalışmaya devam eder
 
     page_html = (
         TEMPLATE.read_text(encoding="utf-8")

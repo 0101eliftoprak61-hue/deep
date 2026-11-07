@@ -14,7 +14,8 @@ IG_USER = os.getenv("IG_USER_ID", "")
 IG_TOKEN = os.getenv("IG_ACCESS_TOKEN", "")
 REPO = os.getenv("GITHUB_REPOSITORY", "")
 BRANCH = os.getenv("GITHUB_REF_NAME", "main")
-GRAPH = "https://graph.facebook.com/v21.0"
+# Instagram Login ile alınan token için graph.instagram.com kullanılır
+GRAPH = os.getenv("IG_GRAPH_HOST", "https://graph.instagram.com/v21.0")
 
 
 def wait_for_url(url, tries=12):
