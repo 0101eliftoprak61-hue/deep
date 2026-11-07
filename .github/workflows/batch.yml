@@ -1,0 +1,49 @@
+name: Toplu post paketi
+
+on:
+  workflow_dispatch:
+    inputs:
+      count:
+        description: "Kaç post üretilsin? (1-20)"
+        required: true
+        default: "10"
+
+permissions:
+  contents: write
+
+jobs:
+  batch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      BATCH_COUNT: ${{ inputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Bağımlılıkları kur
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: Postları üret
+        run: python main.py --batch "$BATCH_COUNT"
+
+      - name: Kullanılan haberleri kaydet (tekrar çıkmasın)
+        run: |
+          git config user.name "deep-bot"
+          git config user.email "deep-bot@users.noreply.github.com"
+          git add posted.json
+          git commit -m "toplu paket" || echo "Değişiklik yok"
+          git push || echo "Push yapılamadı"
+
+      - name: Zip olarak indirilebilir yap
+        uses: actions/upload-artifact@v4
+        with:
+          name: deep-postlar
+          path: batch_out/
+          retention-days: 7
